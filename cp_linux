@@ -1,0 +1,29 @@
+#!/bin/bash
+
+if cat .config | grep "^[^\#]*CONFIG_X86_64=y"; then
+	TARGET_ARCH=x86_64
+else
+	TARGET_ARCH=i386
+fi
+
+echo "************************************************"
+echo "The target architecture is $TARGET_ARCH"
+echo "************************************************"
+
+. environment
+
+mount_image
+INSTALL_PATH=$MNT/boot make ARCH=$TARGET_ARCH install
+INSTALL_MOD_PATH=$MNT make ARCH=$TARGET_ARCH modules_install
+rm $MNT/boot/*.old
+rm $MNT/boot/vmlinuz
+rm $MNT/boot/System.map
+rm $MNT/boot/config
+chroot $MNT update-grub
+cp $MNT/boot/System.map* ../sws/
+cp vmlinux ../sws/vmlinux-`cat include/config/kernel.release`
+./grub-menu-parser.pl < $MNT/boot/grub/menu.lst
+unmount_image
+
+cp System.map ../sws/
+touch ../sws/osa1.5g-current.img

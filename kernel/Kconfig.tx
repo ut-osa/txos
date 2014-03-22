@@ -1,0 +1,258 @@
+menu "Transactional Memory"
+
+### This is not the same as CONFIG_TX from 2.6.16 - do not import code
+### without first changing to TX_KHTM
+config TX
+  bool "Transactional Memory Support"
+  depends on SMP
+  default y
+  help
+    Top-level configuration switch
+
+config TX_DISABLE_SYSENTER
+  bool "Disable sysenter"
+  default n
+  help
+    Disable sysenter support in the kernel.  Necessary for simics + MetaTM
+
+
+#### THIS is where CONFIG_TX from 2.6.16 goes
+config TX_KHTM
+  bool "Use Hardware Transaction Memory in the Kernel"
+  depends on TX
+  default n
+  help
+    Use MetaTM in the kernel
+
+config TX_KSTM
+  bool "Use Software Transactional Memory in the Kernel"
+  depends on TX && FRAME_POINTER
+  default y
+  help
+    Use object-based STM in the kernel.
+
+config TX_SYSCALLS
+  bool "Enable transactional syscalls"
+  depends on (X86_32 || X86_64) && (TX_KHTM || TX_KSTM)
+  default y
+  help
+    Provide ACID properties for system 
+    calls made during a transaction.
+
+config TX_KSTM_PROF
+  bool "Profile kstm"
+  depends on TX_KSTM
+  default n
+  help
+     Collect cycles counts for basic txos operations and export via a procfile.
+
+
+config TX_KSTM_WARNINGS
+  bool "Warn on unsupported functions in a transaction"
+  depends on TX_KSTM
+  default n
+  help
+     Print nasty warnings when a transaction tries to do something
+     that is not yet supported.  Disable this for benchmarking.
+
+config TX_KSTM_ASSERTIONS
+  bool "Assert KSTM state"
+  depends on TX_KSTM
+  default y
+  select DEBUG_SLAB
+  select DEBUG_SLAB_LEAK
+  select DEBUG_SPINLOCK
+  select DEBUG_MUTEXES
+  select DEBUG_SPINLOCK_SLEEP
+  select DEBUG_BUGVERBOSE
+  select DEBUG_LIST
+  select EARLY_PRINTK
+  select DEBUG_RODATA
+  help
+    Add extra assertions about the state of tx objects in the kernel.
+    Disable this for production runs.
+
+config TX_PRINTK_TTY
+  bool "Print buffered tty messages"
+  depends on TX_KSTM
+  default n
+  help
+    Printk writes to the tty that are transactionally buffered so that you can see them for debugging purposes.
+
+config TX_KSTM_ABORT_ONCE
+  bool "Abort all transactions once"
+  depends on TX_KSTM
+  default n
+  help
+    Make sure every transaction aborts once to test recoverability.
+
+config TX_KSTM_ABORT_OBJ_ON_ADD
+  bool "Abort all transactions on create path  iteratively"
+  depends on TX_KSTM
+  default n
+  help
+    Make sure every transaction aborts on each object add path to test recoverability.
+
+config TX_KSTM_ABORT_OBJ_ON_UPGRADE
+  bool "Abort all transactions on upgrade path iteratively"
+  depends on TX_KSTM
+  default n
+  help
+    Make sure every transaction aborts on each object upgrade path to test recoverability.
+
+config TX_KSTM_ABORT_OBJ_ON_RANDOM
+  bool "Abort all transactions on add/upgrade path randomly"
+  depends on TX_KSTM && (TX_KSTM_ABORT_OBJ_ON_ADD || TX_KSTM_ABORT_OBJ_ON_UPGRADE)
+  default n
+  help
+    Make sure every transaction aborts randomly to test recoverability.
+
+
+config TX_KSTM_DEBUG_STALL_ON_CONFLICT
+  bool "Debug stall on conflict"
+  depends on TX_KSTM
+  default n
+  help
+    Print some debug messages for stall on conflict.  Be sure to disable klogd.
+
+config TX_KSTM_STATS
+  bool "Export KSTM stats to /proc/kstm"
+  depends on PROC_FS && TX_KSTM
+  default n
+  help
+    Export KSTM stat data to /proc/kstm
+    Disable this for production runs.
+
+config TX_KSTM_LOCK_ORDERING
+  bool "Enforce KSTM lock ordering in the VFS"
+  default y
+  help
+    Enforce KSTM's lock ordering over the VFS's.  This currently only
+    affects the rename lock, which uses virtual address instead of
+    parent/child relationship.
+
+config TX_KSTM_TX_SIGNALS
+  bool "Transactionalize signal handling"
+  depends on TX_KSTM
+  default y
+  help
+    Transactionalize signal handling by deferring signals
+    sent from txnl processes, and logging (for replay on abort) 
+    signals received by txnl processes
+
+config TX_KSTM_SYNC_DURABLE
+	bool "Sync journal before committing durable transaction"
+	depends on TX_KSTM
+	default n
+	help
+		Force a journal commit before commiting durable transactions,
+		to make sure that enough buffer credits have been allocated
+
+config TX_KSTM_XJBD
+	bool "Extend too-small journal transactions"
+	depends on TX_KSTM
+	default y
+	help
+		If a journal transaction created on commit runs out of credits,
+		try to extend it, and fail spectacularly if that cannot be done
+
+config TX_KSTM_XJBD_DYNAMIC
+	bool "Don't do any buffer credit estimation"
+	depends on TX_KSTM
+	default y
+	help
+		Do not do any estimation of buffer credit needs in a transaction.
+		Start with JBD_DEFAULT_GUESS and extend by JBD_DEFAULT_EXTEND each
+		time we run out.
+
+config TX_KSTM_TX_SIGNALS_VERBOSE
+  bool "Debug transactional signal handling"
+  depends on TX_KSTM && TX_KSTM_TX_SIGNALS
+  default n
+  help
+    Print stuff to console regarding tx signals ad nauseum
+
+config TX_KSTM_DORDER
+  bool "Commit file data writes in order"
+  depends on TX_KSTM
+  default n
+  help
+    Commit file data writes and release inodes in the order of the inode's first write, rather than address space order
+
+menu "Profile non-tx overheads"
+
+config TX_FAKE_STATIC
+  bool "Convert dynamic checks to static ones."
+  default n
+  help
+    TxOS has some checks such as live_transaction() that could,
+    theoretically, be compiled away if we had two syscall tables.
+    Make them static.  This is unsafe with transactions.
+
+
+config DISABLE_LIST2
+  bool "Convert list2's back in to simple lists"
+  default n
+  help
+    Convert list2's back into simple list_heads.  This is for
+    profiling non-tx overheads only.  This is absolutely NOT SAFE for
+    use with transactions.
+
+endmenu
+
+choice 
+  prompt "User-level TX Support"
+  depends on TX_SYSCALLS
+  default TX_USER_PTM
+
+
+### This is our ghetto page-based TM implementation for user space
+config TX_USER_PTM
+  bool "Page-based"
+  help
+    Use Page-based TM to manage user-level speculation.
+
+
+#### This is where support for user-level HTM goes
+config TX_USER_HTM
+  bool "HTM"
+  depends on TX_DISABLE_SYSENTER
+  help
+    Use MetaTM in user space.
+
+config TX_USER_NOTM
+  bool "None"
+  help
+    No special support for user-level transactions.  Choose this if you are using an STM.
+
+
+endchoice
+
+endmenu
+
+menu "OSA Tools"
+
+config OSA
+  bool "Enable OSA Tools"
+  default y
+  help
+    Enables OSA tools, can be used with or without transactions.
+
+config OS_VISIBILITY
+  bool "Enable Simulator notification of kernel state changes."
+  default y
+  depends on OSA
+  help
+    Adds magic instructions to the kernel to notify the simulator of
+    state changes in the kernel.
+
+config OSA_SIMPROTECT
+  bool "Enable fine-grained memory protection in simulator."
+  default y
+  depends on OSA
+  help
+    Adds magic instructions to kernel that ask simulator to break if
+    an address is accessed.  Useful for detecting isolation
+    violations.
+
+endmenu
