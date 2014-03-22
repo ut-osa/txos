@@ -48,9 +48,12 @@ int ext3_sync_file(struct file * file, struct _dentry *dentry, int datasync)
 	struct _inode *inode = d_get_inode(dentry);
 	int ret = 0;
 
-	J_ASSERT(ext3_journal_current_handle() == 0);
+	if (committing_transaction()) {
+		J_ASSERT(ext3_journal_current_handle() != 0);
+		goto real_sync;
+	}
 
-	KSTM_BUG_ON(live_transaction());
+	J_ASSERT(ext3_journal_current_handle() == 0);
 
 	/*
 	 * data=writeback:
@@ -75,6 +78,7 @@ int ext3_sync_file(struct file * file, struct _dentry *dentry, int datasync)
 		goto out;
 	}
 
+real_sync:
 	/*
 	 * The VFS has written the file data.  If the inode is unaltered
 	 * then we need not start a commit.

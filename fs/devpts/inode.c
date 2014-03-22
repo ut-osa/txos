@@ -156,6 +156,11 @@ static struct _dentry *get_node(int num)
 	char s[12];
 	struct _dentry *root = tx_cache_get_dentry(devpts_root);
 	mutex_lock(&root->d_inode->i_mutex);
+	/* DEP 6/9/10 - As we approach more solid device support, we
+	 * may want to revisit later.  For now, just manually lock
+	 * these acquires.
+	 */
+	record_tx_lock(&root->d_inode->i_mutex, MUTEX);
 	return lookup_one_len(s, &root, sprintf(s, "%d", num));
 }
 
@@ -191,6 +196,7 @@ int devpts_pty_new(struct tty_struct *tty)
 	}
 
 	mutex_unlock(&root->d_inode->i_mutex);
+	record_tx_unlock(&root->d_inode->i_mutex, MUTEX);
 
 	return 0;
 }
@@ -199,6 +205,7 @@ struct tty_struct *devpts_get_tty(int number)
 {
 	struct _dentry *dentry = get_node(number);
 	struct tty_struct *tty;
+	struct inode *inode;
 
 	tty = NULL;
 	if (!IS_ERR(dentry)) {
@@ -207,7 +214,9 @@ struct tty_struct *devpts_get_tty(int number)
 		dput(parent(dentry));
 	}
 
-	mutex_unlock(&tx_cache_get_dentry(devpts_root)->d_inode->i_mutex);
+	inode = tx_cache_get_dentry(devpts_root)->d_inode;
+	mutex_unlock(&inode->i_mutex);
+	record_tx_unlock(&inode->i_mutex, MUTEX);
 
 	return tty;
 }
@@ -215,6 +224,7 @@ struct tty_struct *devpts_get_tty(int number)
 void devpts_pty_kill(int number)
 {
 	struct _dentry *dentry = get_node(number);
+	struct inode *inode;
 
 	if (!IS_ERR(dentry)) {
 		struct _inode *inode = d_get_inode(dentry);
@@ -225,7 +235,9 @@ void devpts_pty_kill(int number)
 		}
 		dput(parent(dentry));
 	}
-	mutex_unlock(&tx_cache_get_dentry(devpts_root)->d_inode->i_mutex);
+	inode = tx_cache_get_dentry(devpts_root)->d_inode;
+	mutex_unlock(&inode->i_mutex);
+	record_tx_unlock(&inode->i_mutex, MUTEX);
 }
 
 static int __init init_devpts_fs(void)

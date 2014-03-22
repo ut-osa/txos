@@ -114,6 +114,12 @@ static inline int __unlock_inode(struct txobj_thread_list_node * xnode,
 				kfree(op->u.tty_write.buf);
 				break;
 			}
+			case DEFERRED_TYPE_FSYNC:
+				if (committing_transaction()) {
+					do_fsync(op->u.fsync.file,
+						 op->u.fsync.datasync);
+				}
+				break;
 			default:
 				BUG();
 			}

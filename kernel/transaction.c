@@ -805,11 +805,9 @@ struct transaction * check_asymmetric_conflict(struct transactional_object *xobj
 // Called with xobj->lock held
 struct transaction * upgrade_xobj_mode(struct transactional_object *xobj, enum access_mode mode, int *should_sleep){
 	struct transaction *winner;
-	int rand = 0;
 	
 #ifdef CONFIG_TX_KSTM_ABORT_OBJ_ON_UPGRADE
-   
-	rand = 0;	
+	int rand = 0;	
 	current->upgrade_count++;
         
 	printk(KERN_INFO "INFO: CONFIG_TX_KSTM_ABORT_OBJ_ON_UPGRADE :\n \
@@ -887,12 +885,9 @@ struct txobj_thread_list_node * tx_check_add_obj(struct transactional_object * x
 
 
 	struct txobj_thread_list_node *new_node = NULL;
-   int rand = 0;	
-	KSTM_BUG_ON(!winner);
-
 
 #ifdef CONFIG_TX_KSTM_ABORT_OBJ_ON_ADD
-   rand = 0;	
+	int rand = 0;	
 
 	current->create_count++;
         
@@ -919,6 +914,8 @@ struct txobj_thread_list_node * tx_check_add_obj(struct transactional_object * x
 	}
 		printk(KERN_INFO "INFO:  ***********\n");
 #endif  /* CONFIG_TX_KSTM_ABORT_OBJ_ON_ADD */
+
+	KSTM_BUG_ON(!winner);
 
 	// Only bother contending if we aren't the writer
 	if(xobj->writer != current->transaction)
@@ -2287,7 +2284,8 @@ void checkWhitelist(unsigned long *syscall){
 		/* swapoff */
 		/* sysinfo - probably ok */
 		/* __NR_ipc */
-		/* fsync, msync - could be trivial */
+		/*  msync - could be trivial */
+	case __NR_fsync:
 		/* sigreturn */
 	case __NR_clone:
 		/* setdomain, modify_ldt */
@@ -2310,7 +2308,7 @@ void checkWhitelist(unsigned long *syscall){
 	case __NR_readv:
 	case __NR_writev:
 		/* getsid */
-		/* fdatasync */
+	case __NR_fdatasync:
 		/* sysctl */
 		/* mlock/munlock, mlockall, munlockall */
 		/* NR_sched* */
@@ -2506,7 +2504,7 @@ asmlinkage long sys_xend(volatile struct pt_regs regs){
 	// "Commit" or "abort" the new address space
 	int rv;
 
-	/* DEBUG
+	/* DEBUG 
 	if(current->transactional && current->usertm)
 		printk(KERN_ERR "Ending transaction (%d)\n", current->pid);
 	*/
@@ -2578,6 +2576,10 @@ asmlinkage long sys_xend(volatile struct pt_regs regs){
 asmlinkage long sys_xabort(volatile struct pt_regs regs){
 
 	BUG_ON((current->transactional == 0));
+
+	/* DEBUG
+	printk(KERN_ERR "Aborting transaction\n");
+	*/
 
 	stats_abort_tx(current->eax);
 

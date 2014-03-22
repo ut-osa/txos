@@ -155,9 +155,9 @@ void ext3_free_inode (handle_t *handle, struct _inode * inode)
 
 	/* Ok, now we can actually update the inode bitmaps.. */
 	if (!ext3_clear_bit_atomic(sb_bgl_lock(sbi, block_group),
-					bit, bitmap_bh->b_data))
+				   bit, bitmap_bh->b_data))
 		ext3_error (sb, "ext3_free_inode",
-			      "bit already cleared for inode %lu", ino);
+			    "bit already cleared for inode %lu", ino);
 	else {
 		gdp = ext3_get_group_desc (sb, block_group, &bh2);
 
@@ -454,7 +454,8 @@ struct inode *ext3_new_inode(handle_t *handle, struct _inode * dir, int mode)
 	if (!inode)
 		return ERR_PTR(-ENOMEM);
 
-	_inode = tx_cache_get_inode(inode);
+	/* DEP 6/8/10: Wait to go speculative until completing init */
+	_inode = inode->i_contents;
 
 	ei = EXT3_I(inode);
 	_ei = _EXT3_I(_inode);
@@ -576,6 +577,7 @@ got:
 	_inode->i_mode = mode;
 
 	_inode->i_ino = ino;
+
 	/* This is the optimal IO size (for stat), not the fs block size */
 	inode->i_blocks = 0;
 	_inode->i_mtime = _inode->i_atime = _inode->i_ctime = CURRENT_TIME_SEC;
@@ -634,7 +636,7 @@ got:
 		goto fail_free_drop;
 	}
 
-	ext3_debug("allocating inode %lu\n", inode->i_ino);
+	ext3_debug("allocating inode %lu\n", _inode->i_ino);
 	goto really_out;
 fail:
 	ext3_std_error(sb, err);
@@ -725,12 +727,13 @@ unsigned long ext3_count_free_inodes (struct super_block * sb)
 	struct ext3_super_block *es;
 	unsigned long bitmap_count, x;
 	struct buffer_head *bitmap_bh = NULL;
+	struct _super_block *_sb = tx_cache_get_super_ro(sb);
 
-	es = EXT3_SB(sb)->s_es;
+	es = EXT3_SB(_sb)->s_es;
 	desc_count = 0;
 	bitmap_count = 0;
 	gdp = NULL;
-	for (i = 0; i < EXT3_SB(sb)->s_groups_count; i++) {
+	for (i = 0; i < EXT3_SB(_sb)->s_groups_count; i++) {
 		gdp = ext3_get_group_desc (sb, i, NULL);
 		if (!gdp)
 			continue;
@@ -740,7 +743,7 @@ unsigned long ext3_count_free_inodes (struct super_block * sb)
 		if (!bitmap_bh)
 			continue;
 
-		x = ext3_count_free(bitmap_bh, EXT3_INODES_PER_GROUP(sb) / 8);
+		x = ext3_count_free(bitmap_bh, EXT3_INODES_PER_GROUP(_sb) / 8);
 		printk("group %d: stored = %d, counted = %lu\n",
 			i, le16_to_cpu(gdp->bg_free_inodes_count), x);
 		bitmap_count += x;

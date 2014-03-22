@@ -381,6 +381,8 @@ void validate_mm(struct mm_struct *mm)
 #define validate_mm(mm) do { } while (0)
 #endif
 
+#ifdef MMAP_WORKS
+
 #ifdef CONFIG_TX_KSTM
 
 /*
@@ -397,7 +399,7 @@ static inline struct vm_area_struct *handle_tx_vma_prepare(unsigned long addr,
 check_vma:
 	if (!live_transaction())
 		return vma;
-	
+
 	if (!vma || !is_tx_vma(vma))
 		return vma;
 
@@ -474,6 +476,7 @@ check_vma:
 }
 
 #endif
+#endif // mmap_works (it doesn't)
 
 struct vm_area_struct *
 find_vma_prepare(struct mm_struct *mm, unsigned long addr,
@@ -510,7 +513,7 @@ find_vma_prepare(struct mm_struct *mm, unsigned long addr,
 	*rb_link = __rb_link;
 	*rb_parent = __rb_parent;
 out:
-#ifdef CONFIG_TX_KSTM
+#ifdef MMAP_WORKS
 	return handle_tx_vma_prepare(addr, vma, pprev);
 #else
 	return vma;
@@ -522,7 +525,7 @@ __vma_link_list(struct mm_struct *mm, struct vm_area_struct *vma,
 		struct vm_area_struct *prev, struct rb_node *rb_parent)
 {
 	if (prev) {
-#ifdef CONFIG_TX_KSTM
+#ifdef MMAP_WORKS
 		if (live_transaction() & is_tx_vma_child(vma) && !is_tx_vma_child(prev)){
 			struct vm_area_struct *tmp_vma;
 			
@@ -582,7 +585,7 @@ __vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 	struct vm_area_struct *prev, struct rb_node **rb_link,
 	struct rb_node *rb_parent)
 {
-#ifdef CONFIG_TX_KSTM
+#ifdef MMAP_WORKS
 	// check whether this vma is added to splitted list
 	if (unlikely(live_transaction())){
 		if (is_tx_vma_added(vma) &&
@@ -599,10 +602,10 @@ __vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 	}
 #endif
 	__vma_link_list(mm, vma, prev, rb_parent);
-#ifdef CONFIG_TX_KSTM
 
+	/* DEP 6/1/10 - Cut out broken mmap behavior 
 	if (!live_transaction() || !is_tx_vma_child(vma))
-#endif
+	*/
 	__vma_link_rb(mm, vma, rb_link, rb_parent);
 	
 	__anon_vma_link(vma);
@@ -649,7 +652,7 @@ __insert_vm_struct(struct mm_struct * mm, struct vm_area_struct * vma)
 
 	BUG_ON(__vma && __vma->vm_start < vma->vm_end);
 
-#ifdef CONFIG_TX_KSTM
+#ifdef MMAP_WORKS
 	if (live_transaction() && !is_tx_vma(vma)){
 		if (!is_tx_vma_child(vma)){
 			vma->vm_tx.tx = current->transaction;
@@ -659,7 +662,7 @@ __insert_vm_struct(struct mm_struct * mm, struct vm_area_struct * vma)
 #endif
 	__vma_link(mm, vma, prev, rb_link, rb_parent);
 
-#ifdef CONFIG_TX_KSTM
+#ifdef MMAP_WORKS
 	if (!live_transaction() || !is_tx_vma_child(vma))
 		mm->map_count++;
 #else
@@ -671,11 +674,15 @@ static inline void
 __vma_unlink(struct mm_struct *mm, struct vm_area_struct *vma,
 		struct vm_area_struct *prev)
 {
+#ifdef MMAP_WORKS
 	if (live_transaction()){
 		vma->vm_tx.tx = current->transaction;
 		vma->vm_tx.tx_state = TX_DEL;
 	}
-	else{
+	else
+#endif
+	{
+	
 		prev->vm_next = vma->vm_next;
 		rb_erase(&vma->vm_rb, &mm->mm_rb);
 	}
@@ -702,8 +709,7 @@ void vma_adjust(struct vm_area_struct *vma, unsigned long start,
 	struct anon_vma *anon_vma = NULL;
 	long adjust_next = 0;
 	int remove_next = 0;
-
-#ifdef CONFIG_TX_KSTM
+#ifdef MMAP_WORKS
 	int live_tx = live_transaction();
 #endif
 
@@ -782,7 +788,8 @@ again:			remove_next = 1 + (end > next->vm_end);
 	}
 
 	if (root) {
-#ifdef CONFIG_TX_KSTM
+		
+#ifdef MMAP_WORKS
 		// apply this later when commit
 		if (!live_tx)
 #endif
@@ -804,7 +811,8 @@ again:			remove_next = 1 + (end > next->vm_end);
 	}
 
 	if (root) {
-#ifdef CONFIG_TX_KSTM
+
+#ifdef MMAP_WORKS
 		if (!live_tx)
 #endif
 		do{
@@ -986,12 +994,14 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	if (next && next->vm_end == end)		/* cases 6, 7, 8 */
 		next = next->vm_next;
 
+#ifdef MMAP_WORKS
 #ifdef CONFIG_TX_KSTM
 	if(active_transaction() 
 	   && !committing_transaction()){
 		// Don't merge tx alloc'ed vmas
 		return NULL;
 	}
+#endif
 #endif
 	/*
 	 * Can it merge with the predecessor?
@@ -1269,7 +1279,8 @@ unsigned long do_mmap_pgoff(struct file * file, unsigned long addr,
 	error = security_file_mmap(file, reqprot, prot, flags);
 	if (error)
 		return error;
-		
+
+#ifdef MMAP_WORKS		
 #ifdef CONFIG_TX_KSTM
 	/* Try to allocate from our private stache */
 	/* Yes active, not live.  We want to roll back doomed mallocs too */
@@ -1283,6 +1294,7 @@ unsigned long do_mmap_pgoff(struct file * file, unsigned long addr,
 			}
 		}
 	}
+#endif
 #endif
 
 	/* Clear old maps */
@@ -1343,6 +1355,7 @@ munmap_back:
 		goto unacct_error;
 	}
 
+#ifdef MMAP_WORKS
 #ifdef CONFIG_TX_KSTM
 	INIT_LIST_HEAD(&vma->tx_cache);
 	if(live_transaction()){
@@ -1358,6 +1371,7 @@ munmap_back:
 	vma->vm_tx.parent_vma = NULL;
 	vma->vm_tx.num_splitted = 0;
 	INIT_LIST_HEAD(&vma->tx_splitted);
+#endif
 #endif
 
 	vma->vm_mm = mm;
@@ -1509,6 +1523,7 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 			return addr;
 	}
 
+#ifdef MMAP_WORKS
 #ifdef CONFIG_TX_KSTM
 	/* Try to allocate from our private stache */
 	/* Yes active, not live.  We want to roll back doomed mallocs too */
@@ -1520,6 +1535,7 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 		}
 	}
 #endif
+#endif
 
 	if (len > mm->cached_hole_size) {
 	        start_addr = addr = mm->free_area_cache;
@@ -1530,7 +1546,7 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 
 full_search:
 	for (vma = find_vma(mm, addr); ; vma = vma->vm_next) {
-#ifdef CONFIG_TX_KSTM
+#ifdef MMAP_WORKS
 tx_full_search:
 #endif
 		/* At this point:  (!vma || addr < vma->vm_end). */
@@ -1558,7 +1574,8 @@ tx_full_search:
 		        mm->cached_hole_size = vma->vm_start - addr;
 		addr = vma->vm_end;
 
-#ifdef CONFIG_TX_KSTM
+/* DEP 6/1/10 - backing out mmap stuff until dpkg works again */
+#ifdef MMAP_WORKS
 		if (live_transaction() && vma->vm_next){
 			if (is_current_tx_splitted_vma(vma)){
 				vma = list_first_entry(&(vma->tx_splitted),
@@ -1617,6 +1634,7 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 	}
 
 
+#ifdef MMAP_WORKS
 #ifdef CONFIG_TX_KSTM
 	/* Try to allocate from our private stache */
 	/* Yes active, not live.  We want to roll back doomed mallocs too */
@@ -1627,6 +1645,7 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 				return vma->vm_start;
 		}
 	}
+#endif
 #endif
 
 	/* check if free_area_cache is useful for us */
@@ -1758,7 +1777,7 @@ struct vm_area_struct * find_vma(struct mm_struct * mm, unsigned long addr)
 					rb_node = rb_node->rb_right;
 			}
 			
-#ifdef CONFIG_TX_KSTM
+#ifdef MMAP_WORKS
 			vma = handle_tx_vma(addr, vma, NULL);
 #endif
 			
@@ -1807,7 +1826,7 @@ out:
 	if (prev)
 		vma = prev->vm_next;
 	
-#ifdef CONFIG_TX_KSTM
+#ifdef MMAP_WORKS
 	return handle_tx_vma(addr, vma, pprev);
 #else
 	return prev ? prev->vm_next : vma;
@@ -2064,22 +2083,23 @@ detach_vmas_to_be_unmapped(struct mm_struct *mm, struct vm_area_struct *vma,
 
 	insertion_point = (prev ? &prev->vm_next : &mm->mmap);
 	do {
-#ifdef CONFIG_TX_KSTM
-		if (!live_transaction())
-#endif
-		// KS 03/05/10
-		// do-while: hack to run multiple line when CONFIG_TX_KSTM is set
-		do{
+#ifdef MMAP_WORKS
+		if (!live_transaction() ) 
+#endif			
+		{
 			rb_erase(&vma->vm_rb, &mm->mm_rb);
 			mm->map_count--;
-		}while(0);
+		}
 		
 		tail_vma = vma;
-#ifdef CONFIG_TX_KSTM
+#ifdef MMAP_WORKS
 		if (live_transaction()){
 			if (is_current_tx_vma(vma)){
 				if (is_tx_vma_added(vma)){
 					list_del(&vma->tx_cache);
+					// Do the real removal here.
+					rb_erase(&vma->vm_rb, &mm->mm_rb);
+					mm->map_count--;
 				}
 				else if (is_tx_vma_splitted(vma)){
 					vma = list_first_entry(&vma->tx_splitted,
@@ -2111,7 +2131,7 @@ detach_vmas_to_be_unmapped(struct mm_struct *mm, struct vm_area_struct *vma,
 				}
 
 				else {
-					printk(KERN_ERR "vm_start:%x, vm_end: %x, tx_state: %x\n",
+					printk(KERN_ERR "vm_start:%lx, vm_end: %lx, tx_state: %x\n",
 					       vma->vm_start, vma->vm_end, vma->vm_tx.tx_state);
 					BUG();
 				}
@@ -2134,7 +2154,10 @@ detach_vmas_to_be_unmapped(struct mm_struct *mm, struct vm_area_struct *vma,
 		vma = vma->vm_next;
 	} while (vma && vma->vm_start < end);
 
-#ifdef CONFIG_TX_KSTM
+/* DEP 6/1/10 - I can't figure out how this return is going to possibly work.  
+   Trying to just avoid it until Sangman gets back to fix properly. 
+*/
+#ifdef MMAP_WORKS
 	if (unlikely(live_transaction())){
 		return;
 	}
@@ -2159,9 +2182,11 @@ int split_vma(struct mm_struct * mm, struct vm_area_struct * vma,
 {
 	struct mempolicy *pol, *pol_tx;
 	struct vm_area_struct *new, *new_tx = NULL;
-#ifdef CONFIG_TX_KSTM
+#ifdef MMAP_WORKS
 	int live_tx = live_transaction();
 	int live_tx_not_splitted_vma = live_transaction() && !vma->vm_tx.parent_vma;
+#else
+	int live_tx = 0;
 #endif
 	
 	if (is_vm_hugetlb_page(vma) && (addr & ~HPAGE_MASK))
@@ -2170,9 +2195,10 @@ int split_vma(struct mm_struct * mm, struct vm_area_struct * vma,
 	if (mm->map_count >= sysctl_max_map_count)
 		return -ENOMEM;
 	
-#ifdef CONFIG_TX_KSTM
+#ifdef MMAP_WORKS
 	if (live_tx && vma->vm_tx.tx &&
-	    vma->vm_tx.tx != current->transaction);
+	    vma->vm_tx.tx != current->transaction)
+		DEBUG_BREAKPOINT();
 		// conflict
 		// TODO
 	
@@ -2182,7 +2208,7 @@ int split_vma(struct mm_struct * mm, struct vm_area_struct * vma,
 	if (!new)
 		return -ENOMEM;
 
-#ifdef CONFIG_TX_KSTM
+#ifdef MMAP_WORKS
 	if (unlikely(live_tx_not_splitted_vma)){
 		new_tx = kmem_cache_alloc(vm_area_cachep, GFP_KERNEL);
 		if (!new_tx){
@@ -2194,15 +2220,7 @@ int split_vma(struct mm_struct * mm, struct vm_area_struct * vma,
 
 	/* most fields are the same, copy all, and then fixup */
 	*new = *vma;
-
-#ifdef CONFIG_TX_KSTM
-	if (unlikely(live_tx_not_splitted_vma)){
-		*new_tx = *vma;
-		INIT_LIST_HEAD(&new_tx->tx_cache);
-	}
-
 	INIT_LIST_HEAD(&new->tx_cache);
-#endif
 
 	if (new_below)
 		new->vm_end = addr;
@@ -2214,14 +2232,13 @@ int split_vma(struct mm_struct * mm, struct vm_area_struct * vma,
 	pol = mpol_copy(vma_policy(vma));
 	if (IS_ERR(pol)) {
 		kmem_cache_free(vm_area_cachep, new);
-		if (live_tx_not_splitted_vma){
+		if (new_tx)
 			kmem_cache_free(vm_area_cachep, new_tx);
-		}
+
 		return PTR_ERR(pol);
 	}
 
-#ifdef CONFIG_TX_KSTM
-	if (live_tx_not_splitted_vma){
+	if (new_tx) {
 		pol_tx = mpol_copy(vma_policy(vma));
 		if  (IS_ERR(pol_tx)) {
 			kmem_cache_free(vm_area_cachep, new);
@@ -2229,15 +2246,18 @@ int split_vma(struct mm_struct * mm, struct vm_area_struct * vma,
 			return PTR_ERR(pol_tx);
 		}
 	}
-#endif
+
+	/* DEP 6/1/10: Delay copying the new tx until we have done
+	 * some init work on new and actually need it
+	 */
+	if (unlikely(new_tx)) {
+		*new_tx = *new;
+		INIT_LIST_HEAD(&new_tx->tx_cache);
+	}
 	
 	vma_set_policy(new, pol);
-
-#ifdef CONFIG_TX_KSTM
-	if (live_tx_not_splitted_vma){
+	if (unlikely(new_tx))
 		vma_set_policy(new_tx, pol);
-	}
-#endif
 	
 	/* dP/sk 2/23/10: This increment is undone as part of rolling
 	 * back the mmap.
@@ -2247,24 +2267,17 @@ int split_vma(struct mm_struct * mm, struct vm_area_struct * vma,
 	 */
 	if (new->vm_file){
 		get_file(new->vm_file);
-#ifdef CONFIG_TX_KSTM
-		if (unlikely(live_tx_not_splitted_vma)){
+		if (unlikely(new_tx))
 			get_file(new_tx->vm_file);
-		}
-#endif
 	}
 
 	if (new->vm_ops && new->vm_ops->open){
 		new->vm_ops->open(new);
-#ifdef CONFIG_TX_KSTM
-		if (unlikely(live_tx_not_splitted_vma)){
+		if (unlikely(new_tx))
 			new_tx->vm_ops->open(new_tx);
-		}
-#endif
 	}
 
-#ifdef CONFIG_TX_KSTM 
-	if (unlikely(live_tx_not_splitted_vma)){
+	if (unlikely(new_tx)) {
 		vma->vm_tx.tx = current->transaction;
 		vma->vm_tx.tx_state = TX_SPLIT;
 		
@@ -2273,7 +2286,7 @@ int split_vma(struct mm_struct * mm, struct vm_area_struct * vma,
 			add_splitted_vma(new_tx, vma);
 			new->vm_next = NULL;
 			
-			vma_adjust(new_tx, addr, new_tx->vm_end, new_tx->vm_pgoff +
+			vma_adjust(vma, addr, new_tx->vm_end, new_tx->vm_pgoff +
 				   ((addr - new->vm_start) >> PAGE_SHIFT), new);
 		}
 		else{
@@ -2281,23 +2294,19 @@ int split_vma(struct mm_struct * mm, struct vm_area_struct * vma,
 			add_splitted_vma(new, vma);
 			new->vm_next = NULL;
 			
-			vma_adjust(new_tx, new_tx->vm_start, addr, new_tx->vm_pgoff, new);
+			vma_adjust(vma, new_tx->vm_start, addr, new_tx->vm_pgoff, new);
 		}
-	}
-	else{
-#endif
+	} else{
 		if (new_below)
 			vma_adjust(vma, addr, vma->vm_end, vma->vm_pgoff +
 				   ((addr - new->vm_start) >> PAGE_SHIFT), new);
 		else
 			vma_adjust(vma, vma->vm_start, addr, vma->vm_pgoff, new);
-#ifdef CONFIG_TX_KSTM
 		if (live_tx){
 			// splitting already splitted vma
 			add_splitted_vma(new, vma->vm_tx.parent_vma);
 		}
 	}
-#endif
 	
 	return 0;
 }
@@ -2341,7 +2350,8 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len)
 		if (error)
 			return error;
 		prev = vma;
-#ifdef CONFIG_TX_KSTM
+
+#ifdef MMAP_WORKS
 		if (unlikely(live_transaction())){
 			struct vm_area_struct *tmp_vma;
 			
@@ -2352,8 +2362,6 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len)
 				}
 			}
 		}
-#else
-		prev = vma;
 #endif
 	}
 	
@@ -2364,8 +2372,8 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len)
 		if (error)
 			return error;
 	}
-	vma = prev? prev->vm_next: mm->mmap;
-#ifdef CONFIG_TX_KSTM
+	vma = prev ? prev->vm_next: mm->mmap;
+#ifdef MMAP_WORKS
 	if (live_transaction() && is_tx_vma_splitted(vma)){
 		vma = list_first_entry(&vma->tx_splitted,
 				       struct vm_area_struct,
@@ -2376,15 +2384,15 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len)
 	 * Remove the vma's, and unmap the actual pages
 	 */
 	detach_vmas_to_be_unmapped(mm, vma, prev, end);
-#ifdef CONFIG_TX_KSTM
-	if (!live_transaction())
-#endif
-	do{
+	
+	/* DEP 6/1/10 - unbreak dpkg 
+	   if (!live_transaction()) */
+	{
 		unmap_region(mm, vma, prev, start, end);
 		
 		/* Fix up all other VM information */
 		remove_vma_list(mm, vma);
-	}while(0);
+	}
 
 	return 0;
 }
@@ -2500,10 +2508,7 @@ unsigned long do_brk(unsigned long addr, unsigned long len)
 		return -ENOMEM;
 	}
 
-#ifdef CONFIG_TX_KSTM
 	INIT_LIST_HEAD(&vma->tx_cache);
-#endif
-
 	vma->vm_mm = mm;
 	vma->vm_start = addr;
 	vma->vm_end = addr + len;
@@ -2624,9 +2629,8 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 		new_vma = kmem_cache_alloc(vm_area_cachep, GFP_KERNEL);
 		if (new_vma) {
 			*new_vma = *vma;
-#ifdef CONFIG_TX_KSTM
+
 			INIT_LIST_HEAD(&new_vma->tx_cache);
-#endif
 			pol = mpol_copy(vma_policy(vma));
 			if (IS_ERR(pol)) {
 				kmem_cache_free(vm_area_cachep, new_vma);
@@ -2714,9 +2718,7 @@ int install_special_mapping(struct mm_struct *mm,
 	if (unlikely(vma == NULL))
 		return -ENOMEM;
 
-#ifdef CONFIG_TX_KSTM
 	INIT_LIST_HEAD(&vma->tx_cache);
-#endif
 
 	vma->vm_mm = mm;
 	vma->vm_start = addr;

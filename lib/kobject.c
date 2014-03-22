@@ -547,7 +547,7 @@ struct kobject *kobject_kset_add_dir(struct kset *kset,
 	k->kset = kset;
 	k->parent = parent;
 	k->ktype = &dir_ktype;
-	kobject_set_name(k, name);
+	kobject_set_name(k, "%s", name);
 	ret = kobject_register(k);
 	if (ret < 0) {
 		printk(KERN_WARNING "%s: kobject_register error: %d\n",

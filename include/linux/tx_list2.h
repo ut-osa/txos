@@ -302,7 +302,7 @@ static inline void tx_list2_add_at(struct tx_list2_entry_ref *cursor, struct tx_
 
 
 
-static void tx_list2_del(struct tx_list2_entry_ref *cursor){
+static inline void tx_list2_del(struct tx_list2_entry_ref *cursor){
 
 	struct tx_list2_head *head;
 	struct tx_list2_entry *entry;

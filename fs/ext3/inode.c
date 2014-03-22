@@ -3237,8 +3237,16 @@ int ext3_mark_inode_dirty(handle_t *handle, struct _inode *inode)
 		}
 
 		case TX_ABORTING:
-			KSTM_BUG_ON(!(ei->i_flags & EXT3_TX_DIRTY_FL));
-			ei->i_flags |= EXT3_TX_COMMIT_FL;
+			/* DEP 6/7/10: Speculativley created files can
+			 * end up aborting without ever tx-dirtying
+			 * themselves.
+			 */
+			/*
+			if (!(ei->i_flags & EXT3_TX_DIRTY_FL)) 
+				printk(KERN_ERR "Bad flags %x for inode %lu\n", ei->i_flags, inode->i_ino);
+			*/
+			if ((ei->i_flags & EXT3_TX_DIRTY_FL)) 
+				ei->i_flags |= EXT3_TX_COMMIT_FL;
 			/* fall through */
 		default:
 			break;

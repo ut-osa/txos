@@ -212,7 +212,8 @@ static int ext2_link (struct _dentry * old_dentry, struct _inode * dir,
 
 	inode->i_ctime = CURRENT_TIME_SEC;
 	inode_inc_link_count(inode);
-	tx_atomic_inc(&parent(inode)->i_count);
+	/* DEP 4/4/10:  Don't double-compensate for this increment during abort */
+	tx_atomic_inc_nolog(&parent(inode)->i_count);
 
 	return ext2_add_nondir(dentry, inode);
 }

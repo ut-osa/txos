@@ -2352,7 +2352,8 @@ retry:
 
 	inode->i_ctime = CURRENT_TIME_SEC;
 	inc_nlink(inode);
-	tx_atomic_inc(&parent(inode)->i_count);
+	/* DEP 4/4/10:  Don't double-compensate for this increment during abort */
+	tx_atomic_inc_nolog(&parent(inode)->i_count);
 
 	err = ext3_add_nondir(handle, dentry, inode);
 	ext3_journal_stop_tx(handle);

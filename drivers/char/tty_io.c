@@ -1743,7 +1743,8 @@ static inline ssize_t do_tty_write(
 {
 	ssize_t ret = 0, written = 0;
 	unsigned int chunk;
-	
+
+#ifndef CONFIG_TX_PRINTK_TTY
 	/* If we are in a tranasction, put this on the deferred list for the inode */
 	if(live_transaction()){
 		unsigned char * tty_buf;
@@ -1757,9 +1758,7 @@ static inline ssize_t do_tty_write(
 			return -EFAULT;
 		}
 
-#ifdef CONFIG_TX_PRINTK_TTY
-		printk(KERN_ERR "TX Deferred print of %s\n", tty_buf);
-#endif
+		//printk(KERN_ERR "TX Deferred print of %s\n", tty_buf);
 
 		def_op = alloc_deferred_object_operation();
 		INIT_LIST_HEAD(&def_op->list);
@@ -1776,6 +1775,7 @@ static inline ssize_t do_tty_write(
 		WORKSET_UNLOCK(current->transaction);
 		return count;
 	}
+#endif
 
 	/* FIXME: O_NDELAY ... */
 	if (mutex_lock_interruptible(&tty->atomic_write_lock)) {
@@ -3830,7 +3830,7 @@ struct device *tty_register_device(struct tty_driver *driver, unsigned index,
 	else
 		tty_line_name(driver, index, name);
 
-	return device_create(tty_class, device, dev, name);
+	return device_create(tty_class, device, dev, "%s", name);
 }
 
 /**

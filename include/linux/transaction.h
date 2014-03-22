@@ -118,10 +118,16 @@ extern atomic_t tx_count;
 
 /* A structure to track deferred operations */
 #define DEFERRED_TYPE_TTY_WRITE 0
+#define DEFERRED_TYPE_FSYNC     1
 struct deferred_tty_write {
 	char *buf;
 	size_t count;
 	ssize_t (*write)(struct tty_struct *, struct file *, const unsigned char *, size_t);
+};
+
+struct deferred_fsync {
+	int datasync;
+	struct file *file;
 };
 
 struct deferred_object_operation {
@@ -129,6 +135,7 @@ struct deferred_object_operation {
 	unsigned long type;
 	union{
 		struct deferred_tty_write tty_write;
+		struct deferred_fsync fsync;
 	} u;
 };
 

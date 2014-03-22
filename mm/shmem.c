@@ -1897,7 +1897,8 @@ static int shmem_link(struct _dentry *old_dentry, struct _inode *dir, struct _de
 	dir->i_size += BOGO_DIRENT_SIZE;
 	_inode->i_ctime = dir->i_ctime = dir->i_mtime = CURRENT_TIME;
 	inc_nlink(_inode);
-	tx_atomic_inc(&inode->i_count);	/* New dentry reference */
+	/* DEP 4/4/10:  Don't double-compensate for this increment during abort */
+	tx_atomic_inc_nolog(&inode->i_count);	/* New dentry reference */
 	dget(parent(dentry));		/* Extra pinning count for the created dentry */
 	d_instantiate(dentry, _inode);
 	return 0;

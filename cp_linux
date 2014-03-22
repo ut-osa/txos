@@ -27,3 +27,4 @@ unmount_image
 
 cp System.map ../sws/
 touch ../sws/osa1.5g-current.img
+

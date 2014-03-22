@@ -565,7 +565,7 @@ static void __init kernel_param_sysfs_setup(const char *name,
 
 	mk->mod = THIS_MODULE;
 	kobj_set_kset_s(mk, module_subsys);
-	kobject_set_name(&mk->kobj, name);
+	kobject_set_name(&mk->kobj, "%s", name);
 	kobject_init(&mk->kobj);
 	ret = kobject_add(&mk->kobj);
 	BUG_ON(ret < 0);

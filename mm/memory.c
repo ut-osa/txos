@@ -2719,24 +2719,13 @@ retry:
 	 * invalidated this page.  If unmap_mapping_range got called,
 	 * retry getting the page.
 	 */
-	if (mapping){
-		if(unlikely(sequence != mapping->truncate_count)) {
-			pte_unmap_unlock(page_table, ptl);
-			page_cache_release(new_page);
-			cond_resched();
-			sequence = mapping->truncate_count;
-			smp_rmb();
-			goto retry;
-		}
-
-		if(live_transaction()){
-			const struct address_space_operations *a_ops = mapping->a_ops;
-
-			// to keep track of number of dirtied blocks
-			// for safety, make all the file-backed mmap'ed pages dirty
-			if(a_ops->prepare_tx_write)
-				a_ops->prepare_tx_write(vma->vm_file, new_page, 0, PAGE_SIZE);
-		}
+	if (mapping && unlikely(sequence != mapping->truncate_count)) {
+		pte_unmap_unlock(page_table, ptl);
+		page_cache_release(new_page);
+		cond_resched();
+		sequence = mapping->truncate_count;
+		smp_rmb();
+		goto retry;
 	}
 	
 	/*
@@ -2780,6 +2769,14 @@ retry:
 unlock:
 	pte_unmap_unlock(page_table, ptl);
 	if (dirty_page) {
+		if(live_transaction()){
+			const struct address_space_operations *a_ops = mapping->a_ops;
+			
+			// to keep track of number of dirtied blocks
+			// for safety, make all the file-backed mmap'ed pages dirty
+			if(a_ops->prepare_tx_write)
+				a_ops->prepare_tx_write(vma->vm_file, dirty_page, 0, PAGE_SIZE);
+		}
 		set_page_dirty_balance(dirty_page);
 		put_page(dirty_page);
 	}

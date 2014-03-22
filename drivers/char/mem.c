@@ -990,7 +990,7 @@ static int __init chr_dev_init(void)
 	for (i = 0; i < ARRAY_SIZE(devlist); i++)
 		device_create(mem_class, NULL,
 			      MKDEV(MEM_MAJOR, devlist[i].minor),
-			      devlist[i].name);
+			      "%s", devlist[i].name);
 
 	return 0;
 }

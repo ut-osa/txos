@@ -88,10 +88,30 @@ long do_fsync(struct file *file, int datasync)
 	int err;
 	struct address_space *mapping = file->f_mapping;
 	
-	if(live_transaction()){
-#ifdef CONFIG_TX_KSTM_WARNINGS
-		printk(KERN_ERR "WARNING: fsync in a tx.  Eliding\n");
-#endif
+	if (live_transaction()){
+		/* DEP 5/27/10 - Defer fsync until commit. */
+		struct deferred_object_operation *def_op;
+		txobj_thread_list_node_t *list_node = workset_has_object(&file->f_mapping->host->xobj);
+
+		if (!list_node) {
+			tx_cache_get_file_ro(file);
+			tx_cache_get_inode_ro(file->f_mapping->host);
+			list_node = workset_has_object(&file->f_mapping->host->xobj); 
+		}
+
+		def_op = alloc_deferred_object_operation();
+		INIT_LIST_HEAD(&def_op->list);
+		def_op->type = DEFERRED_TYPE_FSYNC;
+		def_op->u.fsync.datasync = datasync;
+		def_op->u.fsync.file = file;
+
+		/* DEP: Pin the file until the sync is executed */
+		tx_atomic_inc_not_zero(&file->f_count);
+
+		// XXX: Could probably use something finer grained here.  
+		WORKSET_LOCK(current->transaction);
+		list_add(&def_op->list, &list_node->deferred_operations);
+		WORKSET_UNLOCK(current->transaction);
 		return 0;
 	}
 
@@ -107,11 +127,13 @@ long do_fsync(struct file *file, int datasync)
 	 * We need to protect against concurrent writers, which could cause
 	 * livelocks in fsync_buffers_list().
 	 */
-	mutex_lock(&mapping->host->i_mutex);
+	if (!committing_transaction())
+		mutex_lock(&mapping->host->i_mutex);
 	err = file->f_op->fsync(file, file_get_dentry(file), datasync);
 	if (!ret)
 		ret = err;
-	mutex_unlock(&mapping->host->i_mutex);
+	if (!committing_transaction())
+		mutex_unlock(&mapping->host->i_mutex);
 	err = filemap_fdatawait(mapping);
 	if (!ret)
 		ret = err;

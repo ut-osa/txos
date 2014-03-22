@@ -419,9 +419,16 @@ static inline int dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
 			 */
 			struct inode *inode = file_get_dentry(file)->d_inode;
 
+			/* DEP 4/4/10 - I don't understand this
+			 * assertion anymore.  I don't think it serves
+			 * a useful purpose, and is too restrictive if
+			 * you have the usertm flag set.
+			 */
+/* 
 #ifdef CONFIG_TX_KSTM_ASSERTIONS
 			KSTM_BUG_ON(live_transaction() && (current->eax != __NR_xbegin && current->eax != __NR_xend));
 #endif
+*/
 			get_file(file);
 			if (tmp->vm_flags & VM_DENYWRITE)
 				tx_atomic_dec(&inode->i_writecount);

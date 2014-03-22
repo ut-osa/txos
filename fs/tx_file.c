@@ -37,8 +37,9 @@ int lock_file(struct txobj_thread_list_node * xnode, int blocking){
 int unlock_file(struct txobj_thread_list_node * xnode, int blocking){
 
 	struct file * file = (struct file *) xnode->orig_obj;
-	if(!blocking)
+	if (!blocking) 
 		spin_unlock(&file->f_ep_lock);
+
 	return 0;
 }
 
@@ -184,6 +185,7 @@ static inline int __setup_list_node( txobj_thread_list_node_t *list_node,
 	list_node->commit = commit_file;
 	list_node->abort  = abort_file;
 	list_node->release = release_file;
+	INIT_LIST_HEAD(&list_node->deferred_operations);
 	list_node->tx_obj = xobj;
 
 #ifdef CONFIG_TX_KSTM_ASSERTIONS

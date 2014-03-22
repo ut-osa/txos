@@ -1854,7 +1854,7 @@ int open_namei(int dfd, const char *pathname, int flag,
 	imutex_lock(dir->d_inode);
 	path_dentry = lookup_hash(nd);
 	if(unlikely(IS_ERR(path_dentry)))
-		path.dentry = path_dentry;
+		path.dentry = (struct dentry *)path_dentry;
 	else
 		path.dentry = parent(path_dentry);
 	path.mnt = nd->mnt;
